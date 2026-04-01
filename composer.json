@@ -1,0 +1,20 @@
+{
+    "name": "hexawebsystems/laravel-hexa-package-zerogpt",
+    "description": "ZeroGPT  \u2014 AI content detection with per-sentence probability scoring",
+    "type": "library",
+    "license": "MIT",
+    "autoload": {
+        "psr-4": {
+            "hexa_package_zerogpt\\": "src/"
+        }
+    },
+    "extra": {
+        "laravel": {
+            "providers": [
+                "hexa_package_zerogpt\\Providers\\ZerogptServiceProvider"
+            ]
+        }
+    },
+    "minimum-stability": "dev",
+    "prefer-stable": true
+}
