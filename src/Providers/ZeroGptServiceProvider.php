@@ -25,10 +25,7 @@ class ZeroGptServiceProvider extends ServiceProvider
         $this->loadRoutesFrom(__DIR__ . '/../../routes/zerogpt.php');
         $this->loadViewsFrom(__DIR__ . '/../../resources/views', 'zerogpt');
 
-        // Settings card
-        view()->composer('*', function ($view) {
-            $view->getFactory()->startPush('settings-cards', view('zerogpt::partials.settings-card')->render());
-        });
+        // Settings card — uses @push in blade template directly
 
         // Sidebar link
         if (class_exists(\hexa_core\Services\PackageRegistryService::class)) {
