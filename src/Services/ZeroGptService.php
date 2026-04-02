@@ -113,16 +113,40 @@ class ZeroGptService
     }
 
     /**
-     * Test the API connection with a simple request.
+     * Test the API connection by verifying the API key is accepted.
      *
      * @return array{success: bool, message: string}
      */
     public function testConnection(): array
     {
-        $result = $this->detect('The quick brown fox jumps over the lazy dog. This is a simple test sentence written by a human.');
-        if ($result['success']) {
-            return ['success' => true, 'message' => 'ZeroGPT API connected. Human score: ' . ($result['data']['is_human_written'] ?? '?') . '%'];
+        $apiKey = $this->getApiKey();
+        if (empty($apiKey)) {
+            return ['success' => false, 'message' => 'ZeroGPT API key not configured.'];
         }
-        return $result;
+
+        try {
+            // Send minimal text to verify the API key works
+            $response = Http::withHeaders([
+                'ApiKey' => $apiKey,
+                'Content-Type' => 'application/json',
+            ])->timeout(15)->post(config('zerogpt.api_url', 'https://api.zerogpt.com/api/detect/detectText'), [
+                'input_text' => 'Test connection.',
+            ]);
+
+            if ($response->successful()) {
+                $data = $response->json();
+                $balance = $data['data']['creditBalance'] ?? $data['data']['balance'] ?? null;
+                $msg = 'ZeroGPT API connected successfully.';
+                if ($balance !== null) {
+                    $msg .= ' Balance: ' . $balance . ' credits.';
+                }
+                return ['success' => true, 'message' => $msg];
+            }
+
+            $error = $response->json('message') ?? $response->body();
+            return ['success' => false, 'message' => 'ZeroGPT API error (' . $response->status() . '): ' . (is_string($error) ? $error : json_encode($error))];
+        } catch (\Exception $e) {
+            return ['success' => false, 'message' => 'ZeroGPT connection failed: ' . $e->getMessage()];
+        }
     }
 }
