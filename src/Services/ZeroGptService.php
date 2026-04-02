@@ -79,28 +79,31 @@ class ZeroGptService
 
         try {
             $response = Http::withHeaders([
-                'x-api-key' => $apiKey,
+                'ApiKey' => $apiKey,
                 'Content-Type' => 'application/json',
-            ])->timeout(30)->post(config('zerogpt.api_url', 'https://api.zerogpt.me/v2/predict/text'), [
-                'document' => $text,
+            ])->timeout(30)->post(config('zerogpt.api_url', 'https://api.zerogpt.com/api/detect/detectText'), [
+                'input_text' => $text,
             ]);
 
             if (!$response->successful()) {
-                $error = $response->json('error') ?? $response->body();
-                return ['success' => false, 'message' => 'ZeroGPT API error: ' . (is_string($error) ? $error : json_encode($error))];
+                $error = $response->json('message') ?? $response->body();
+                return ['success' => false, 'message' => 'ZeroGPT API error (' . $response->status() . '): ' . (is_string($error) ? $error : json_encode($error))];
             }
 
             $data = $response->json();
+            $resultData = $data['data'] ?? $data;
+            $fakePercent = $resultData['fakePercentage'] ?? null;
+            $aiSentences = $resultData['h'] ?? [];
 
             return [
-                'success' => true,
-                'message' => 'Detection complete.',
+                'success' => (bool) ($data['success'] ?? false),
+                'message' => $data['message'] ?? 'Detection complete.',
                 'data' => [
-                    'completely_generated_prob' => $data['documents'][0]['completely_generated_prob'] ?? null,
-                    'average_generated_prob' => $data['documents'][0]['average_generated_prob'] ?? null,
-                    'overall_burstiness' => $data['documents'][0]['overall_burstiness'] ?? null,
-                    'sentences' => $data['documents'][0]['sentences'] ?? [],
-                    'predicted_class' => $data['documents'][0]['predicted_class'] ?? null,
+                    'is_human_written' => $fakePercent !== null ? round(100 - (float) $fakePercent, 1) : null,
+                    'fake_percentage' => $fakePercent,
+                    'ai_words' => $resultData['aiWords'] ?? null,
+                    'text_words' => $resultData['textWords'] ?? null,
+                    'sentences' => is_array($aiSentences) ? $aiSentences : [],
                     'raw' => $data,
                 ],
             ];
@@ -118,7 +121,7 @@ class ZeroGptService
     {
         $result = $this->detect('The quick brown fox jumps over the lazy dog. This is a simple test sentence written by a human.');
         if ($result['success']) {
-            return ['success' => true, 'message' => 'ZeroGPT API connected. AI probability: ' . round(($result['data']['completely_generated_prob'] ?? 0) * 100) . '%'];
+            return ['success' => true, 'message' => 'ZeroGPT API connected. Human score: ' . ($result['data']['is_human_written'] ?? '?') . '%'];
         }
         return $result;
     }
