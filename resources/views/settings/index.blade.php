@@ -9,8 +9,15 @@
         <h3 class="font-semibold text-gray-800 mb-1">ZeroGPT AI Detection</h3>
         <p class="text-sm text-gray-500 mb-4">Detect AI-generated content with per-sentence probability scoring.</p>
 
-        <div class="bg-blue-50 rounded-lg p-3 text-sm text-blue-800 mb-4">
-            <strong>Setup:</strong> Get your API key at <a href="https://www.zerogpt.com" target="_blank" class="underline inline-flex items-center gap-1">zerogpt.com <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"/></svg></a>. Free tier: 10,000 words/month.
+        <div class="bg-blue-50 rounded-lg p-4 text-sm text-blue-800 mb-4 space-y-2">
+            <p class="font-semibold">Setup Instructions</p>
+            <ol class="list-decimal list-inside space-y-1 text-blue-700">
+                <li>Create an account at <a href="https://www.zerogpt.com/my-account?register=true" target="_blank" class="underline inline-flex items-center gap-1">zerogpt.com <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"/></svg></a></li>
+                <li>Subscribe to an API plan at <a href="https://www.zerogpt.com/pricing#api" target="_blank" class="underline inline-flex items-center gap-1">Pricing <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"/></svg></a> and add funds</li>
+                <li>Copy your API key from the dashboard</li>
+                <li>Paste the key below and click Test to verify</li>
+            </ol>
+            <p class="text-xs text-blue-600">Pay-as-you-go: from $0.034/1000 words. No free API tier (free web UI only).</p>
         </div>
 
         <div class="space-y-4">
