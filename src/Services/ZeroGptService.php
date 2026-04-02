@@ -139,13 +139,7 @@ class ZeroGptService
             ]);
 
             if ($response->successful()) {
-                $data = $response->json();
-                $feedback = $data['data']['feedback'] ?? null;
-                $msg = 'ZeroGPT API connected successfully.';
-                if ($feedback) {
-                    $msg .= ' Response: ' . $feedback;
-                }
-                return ['success' => true, 'message' => $msg, 'detail' => 'Balance not available via API — check your ZeroGPT dashboard.'];
+                return ['success' => true, 'message' => 'ZeroGPT API connected successfully.'];
             }
 
             $error = $response->json('message') ?? $response->body();
