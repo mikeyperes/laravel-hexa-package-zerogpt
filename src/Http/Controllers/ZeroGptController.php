@@ -54,7 +54,7 @@ class ZeroGptController extends Controller
         Setting::setValue('zerogpt_enabled', $validated['enabled'] ?? true);
         Setting::setValue('zerogpt_debug_mode', $validated['debug_mode'] ?? false);
 
-        hexaLog('zerogpt', 'settings_updated', 'ZeroGPT  settings updated');
+        hexaLog('zerogpt', 'settings_updated', 'ZeroGPT settings updated');
 
         return response()->json(['success' => true, 'message' => 'Settings saved.']);
     }

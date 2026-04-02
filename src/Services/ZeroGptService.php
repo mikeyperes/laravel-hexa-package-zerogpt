@@ -7,7 +7,7 @@ use hexa_core\Services\GenericService;
 use Illuminate\Support\Facades\Http;
 
 /**
- * ZeroGptService — AI content detection via ZeroGPT  API.
+ * ZeroGptService — AI content detection via ZeroGPT API.
  *
  * Detects AI-generated text with per-sentence probability scoring.
  * Free tier: 10,000 words/month. API: api.zerogpt.me
@@ -25,7 +25,7 @@ class ZeroGptService
     }
 
     /**
-     * Check if ZeroGPT  is enabled.
+     * Check if ZeroGPT is enabled.
      *
      * @return bool
      */
@@ -64,11 +64,11 @@ class ZeroGptService
     {
         $apiKey = $this->getApiKey();
         if (empty($apiKey)) {
-            return ['success' => false, 'message' => 'ZeroGPT  API key not configured.'];
+            return ['success' => false, 'message' => 'ZeroGPT API key not configured.'];
         }
 
         if (!$this->isEnabled()) {
-            return ['success' => false, 'message' => 'ZeroGPT  is disabled.'];
+            return ['success' => false, 'message' => 'ZeroGPT is disabled.'];
         }
 
         // Debug mode: only send first 3 sentences
@@ -87,7 +87,7 @@ class ZeroGptService
 
             if (!$response->successful()) {
                 $error = $response->json('error') ?? $response->body();
-                return ['success' => false, 'message' => 'ZeroGPT  API error: ' . (is_string($error) ? $error : json_encode($error))];
+                return ['success' => false, 'message' => 'ZeroGPT API error: ' . (is_string($error) ? $error : json_encode($error))];
             }
 
             $data = $response->json();
@@ -105,7 +105,7 @@ class ZeroGptService
                 ],
             ];
         } catch (\Exception $e) {
-            return ['success' => false, 'message' => 'ZeroGPT  request failed: ' . $e->getMessage()];
+            return ['success' => false, 'message' => 'ZeroGPT request failed: ' . $e->getMessage()];
         }
     }
 
@@ -118,7 +118,7 @@ class ZeroGptService
     {
         $result = $this->detect('The quick brown fox jumps over the lazy dog. This is a simple test sentence written by a human.');
         if ($result['success']) {
-            return ['success' => true, 'message' => 'ZeroGPT  API connected. AI probability: ' . round(($result['data']['completely_generated_prob'] ?? 0) * 100) . '%'];
+            return ['success' => true, 'message' => 'ZeroGPT API connected. AI probability: ' . round(($result['data']['completely_generated_prob'] ?? 0) * 100) . '%'];
         }
         return $result;
     }
