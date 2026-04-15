@@ -11,7 +11,7 @@
     "extra": {
         "laravel": {
             "providers": [
-                "hexa_package_zerogpt\\Providers\\ZerogptServiceProvider"
+                "hexa_package_zerogpt\\Providers\\ZeroGptServiceProvider"
             ]
         }
     },
