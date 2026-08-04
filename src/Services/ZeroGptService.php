@@ -2,8 +2,10 @@
 
 namespace hexa_package_zerogpt\Services;
 
+use hexa_core\AI\Contracts\AiTransactionRecorder;
 use hexa_core\Models\Setting;
 use hexa_core\Services\GenericService;
+use Illuminate\Http\Client\Response;
 use Illuminate\Support\Facades\Http;
 
 /**
@@ -83,12 +85,7 @@ class ZeroGptService
         }
 
         try {
-            $response = Http::withHeaders([
-                'ApiKey' => $apiKey,
-                'Content-Type' => 'application/json',
-            ])->timeout(30)->post(config('zerogpt.api_url', 'https://api.zerogpt.com/api/detect/detectText'), [
-                'input_text' => $text,
-            ]);
+            $response = $this->requestDetection($apiKey, $text, 30, 'detector.scan');
 
             if (!$response->successful()) {
                 $error = $response->json('message') ?? $response->body();
@@ -131,12 +128,7 @@ class ZeroGptService
 
         try {
             // Send minimal text to verify the API key works
-            $response = Http::withHeaders([
-                'ApiKey' => $apiKey,
-                'Content-Type' => 'application/json',
-            ])->timeout(15)->post(config('zerogpt.api_url', 'https://api.zerogpt.com/api/detect/detectText'), [
-                'input_text' => 'Test connection.',
-            ]);
+            $response = $this->requestDetection($apiKey, 'Test connection.', 15, 'detector.connection_test');
 
             if ($response->successful()) {
                 return ['success' => true, 'message' => 'ZeroGPT API connected successfully.'];
@@ -146,6 +138,56 @@ class ZeroGptService
             return ['success' => false, 'message' => 'ZeroGPT API error (' . $response->status() . '): ' . (is_string($error) ? $error : json_encode($error))];
         } catch (\Exception $e) {
             return ['success' => false, 'message' => 'ZeroGPT connection failed: ' . $e->getMessage()];
+        }
+    }
+
+    private function requestDetection(string $apiKey, string $text, int $timeout, string $operation): Response
+    {
+        $endpoint = (string) config('zerogpt.api_url', 'https://api.zerogpt.com/api/detect/detectText');
+        $units = ['characters' => mb_strlen($text), 'words' => str_word_count($text)];
+        $span = app(AiTransactionRecorder::class)->start([
+            'provider' => 'zerogpt',
+            'package' => 'hexawebsystems/laravel-hexa-package-zerogpt',
+            'model' => 'zerogpt-ai-detector',
+            'operation' => $operation,
+            'endpoint' => parse_url($endpoint, PHP_URL_PATH) ?: '/api/detect/detectText',
+            'request_metadata' => array_merge($units, ['timeout_seconds' => $timeout]),
+        ]);
+
+        try {
+            $response = Http::withHeaders([
+                'ApiKey' => $apiKey,
+                'Content-Type' => 'application/json',
+            ])->timeout($timeout)->post($endpoint, ['input_text' => $text]);
+            $resultData = (array) ($response->json('data') ?? []);
+            $usage = array_merge($units, [
+                'ai_words' => is_numeric($resultData['aiWords'] ?? null) ? (int) $resultData['aiWords'] : null,
+                'text_words' => is_numeric($resultData['textWords'] ?? null) ? (int) $resultData['textWords'] : null,
+            ]);
+            $attributes = [
+                'provider_request_id' => $response->header('x-request-id'),
+                'http_status' => $response->status(),
+                'usage' => $usage,
+                'response_metadata' => [
+                    'fake_percentage' => $resultData['fakePercentage'] ?? null,
+                    'flagged_sentence_count' => count((array) ($resultData['h'] ?? [])),
+                ],
+            ];
+            $providerSucceeded = $response->successful() && (bool) ($response->json('success') ?? true);
+
+            if ($providerSucceeded) {
+                $span->succeed($attributes);
+            } else {
+                $span->fail((string) ($response->json('message') ?? 'ZeroGPT request failed.'), array_merge($attributes, [
+                    'error_type' => 'zerogpt_provider_error',
+                ]));
+            }
+
+            return $response;
+        } catch (\Throwable $e) {
+            $span->fail($e, ['usage' => $units]);
+
+            throw $e;
         }
     }
 }
