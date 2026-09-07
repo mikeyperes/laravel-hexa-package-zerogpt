@@ -11,7 +11,7 @@ final class ZeroGptRouteSecurityTest extends TestCase
         $routes = (string) file_get_contents(dirname(__DIR__, 2).'/routes/zerogpt.php');
 
         self::assertStringContainsString(
-            "Route::middleware(['web', 'auth', 'two_factor'])",
+            "Route::middleware(['web', 'auth', 'locked', 'system_lock', 'two_factor', 'role'])",
             $routes,
         );
     }

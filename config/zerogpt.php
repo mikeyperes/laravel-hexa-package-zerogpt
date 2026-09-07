@@ -1,7 +1,7 @@
 <?php
 
 return [
-    'version' => '2.0.8',
+    'version' => '2.0.9',
     'enabled' => true,
     'api_url' => 'https://api.zerogpt.com/api/detect/detectText',
     'setting_keys' => [

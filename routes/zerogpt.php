@@ -3,7 +3,7 @@
 use hexa_package_zerogpt\Http\Controllers\ZeroGptController;
 use Illuminate\Support\Facades\Route;
 
-Route::middleware(['web', 'auth', 'two_factor'])->group(function () {
+Route::middleware(['web', 'auth', 'locked', 'system_lock', 'two_factor', 'role'])->group(function () {
     Route::get('zerogpt/settings', [ZeroGptController::class, 'settings'])->name('zerogpt.settings');
     Route::post('zerogpt/settings', [ZeroGptController::class, 'saveSettings'])->name('zerogpt.settings.save');
     Route::post('zerogpt/test', [ZeroGptController::class, 'testConnection'])->name('zerogpt.test');
