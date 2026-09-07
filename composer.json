@@ -2,7 +2,7 @@
     "name": "hexawebsystems/laravel-hexa-package-zerogpt",
     "description": "ZeroGPT  \u2014 AI content detection with per-sentence probability scoring",
     "type": "library",
-    "version": "2.0.7",
+    "version": "2.0.8",
     "license": "MIT",
     "require": {
         "php": "^8.2",
