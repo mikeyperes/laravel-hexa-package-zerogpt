@@ -4,6 +4,7 @@ namespace hexa_package_zerogpt\Http\Controllers;
 
 use hexa_core\Http\Controllers\Controller;
 use hexa_core\Models\Setting;
+use hexa_core\Services\CredentialService;
 use hexa_package_zerogpt\Services\ZeroGptService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -16,18 +17,15 @@ class ZeroGptController extends Controller
 {
     protected ZeroGptService $service;
 
-    /**
-     * @param ZeroGptService $service
-     */
-    public function __construct(ZeroGptService $service)
-    {
+    public function __construct(
+        ZeroGptService $service,
+        private readonly CredentialService $credentials,
+    ) {
         $this->service = $service;
     }
 
     /**
      * Settings page.
-     *
-     * @return View
      */
     public function settings(): View
     {
@@ -36,9 +34,6 @@ class ZeroGptController extends Controller
 
     /**
      * Save settings.
-     *
-     * @param Request $request
-     * @return JsonResponse
      */
     public function saveSettings(Request $request): JsonResponse
     {
@@ -48,8 +43,9 @@ class ZeroGptController extends Controller
             'debug_mode' => 'nullable|boolean',
         ]);
 
-        if (isset($validated['api_key']) && !empty($validated['api_key'])) {
-            Setting::setValue('zerogpt_api_key', $validated['api_key']);
+        if (isset($validated['api_key']) && ! empty($validated['api_key'])) {
+            $this->credentials->store('zerogpt', 'api_key', $validated['api_key']);
+            Setting::setValue('zerogpt_api_key', '');
         }
         Setting::setValue('zerogpt_enabled', $validated['enabled'] ?? true);
         Setting::setValue('zerogpt_debug_mode', $validated['debug_mode'] ?? false);
@@ -61,8 +57,6 @@ class ZeroGptController extends Controller
 
     /**
      * Test API connection.
-     *
-     * @return JsonResponse
      */
     public function testConnection(): JsonResponse
     {
@@ -71,8 +65,6 @@ class ZeroGptController extends Controller
 
     /**
      * Raw test page.
-     *
-     * @return View
      */
     public function raw(): View
     {
@@ -81,9 +73,6 @@ class ZeroGptController extends Controller
 
     /**
      * Detect AI content.
-     *
-     * @param Request $request
-     * @return JsonResponse
      */
     public function detect(Request $request): JsonResponse
     {

@@ -4,146 +4,123 @@ namespace hexa_package_zerogpt\Services;
 
 use hexa_core\AI\Contracts\AiTransactionRecorder;
 use hexa_core\Models\Setting;
-use hexa_core\Services\GenericService;
-use Illuminate\Http\Client\Response;
-use Illuminate\Support\Facades\Http;
+use hexa_core\Security\Http\OutboundHttpException;
+use hexa_core\Security\Http\OutboundHttpResponse;
+use hexa_core\Security\Http\SafeOutboundHttpClient;
+use hexa_core\Services\CredentialService;
+use Illuminate\Support\Facades\Log;
+use Throwable;
 
 /**
- * ZeroGptService — AI content detection via ZeroGPT API.
- *
- * Detects AI-generated text with per-sentence probability scoring.
- * Free tier: 10,000 words/month. API: api.zerogpt.me
+ * AI-content detection through ZeroGPT's text detection endpoint.
  */
 class ZeroGptService
 {
-    protected GenericService $generic;
+    private const DEFAULT_ENDPOINT = 'https://api.zerogpt.com/api/detect/detectText';
 
-    /**
-     * @param GenericService $generic
-     */
-    public function __construct(GenericService $generic)
-    {
-        $this->generic = $generic;
-    }
+    private const CONNECTION_TIMEOUT_SECONDS = 15;
 
-    /**
-     * Check if ZeroGPT is enabled.
-     *
-     * @return bool
-     */
+    private const DETECTION_TIMEOUT_SECONDS = 30;
+
+    private const MAX_RESPONSE_BYTES = 4 * 1024 * 1024;
+
+    public function __construct(
+        private readonly SafeOutboundHttpClient $http,
+        private readonly CredentialService $credentials,
+    ) {}
+
     public function isEnabled(): bool
     {
-        return Setting::getValue('zerogpt_enabled', config('zerogpt.enabled', true));
+        return (bool) Setting::getValue('zerogpt_enabled', config('zerogpt.enabled', true));
     }
 
-    /**
-     * Check if debug mode is on (sends only first 3 sentences).
-     *
-     * @return bool
-     */
     public function isDebugMode(): bool
     {
         return (bool) Setting::getValue('zerogpt_debug_mode', false);
     }
 
-    /**
-     * Get the API key (from CredentialService or legacy Setting).
-     *
-     * @return string|null
-     */
     public function getApiKey(): ?string
     {
-        if (class_exists(\hexa_core\Services\CredentialService::class)) {
-            $cred = app(\hexa_core\Services\CredentialService::class);
-            $val = $cred->get('zerogpt', 'api_key');
-            if ($val) return $val;
-        }
-        return Setting::getValue('zerogpt_api_key');
+        return $this->credentials->get('zerogpt', 'api_key')
+            ?: Setting::getValue('zerogpt_api_key');
     }
 
-    /**
-     * Detect AI-generated content.
-     *
-     * @param string $text Plain text to analyze
-     * @return array{success: bool, message: string, data?: array}
-     */
+    /** @return array{success: bool, message: string, data?: array} */
     public function detect(string $text): array
     {
-        $apiKey = $this->getApiKey();
-        if (empty($apiKey)) {
+        $apiKey = $this->validApiKey($this->getApiKey());
+        if ($apiKey === null) {
             return ['success' => false, 'message' => 'ZeroGPT API key not configured.'];
         }
 
-        if (!$this->isEnabled()) {
+        if (! $this->isEnabled()) {
             return ['success' => false, 'message' => 'ZeroGPT is disabled.'];
         }
 
-        // Debug mode: only send first 3 sentences
-        if ($this->isDebugMode()) {
-            $sentences = preg_split('/(?<=[.!?])\s+/', $text, 4);
-            $text = implode(' ', array_slice($sentences, 0, 3));
-        }
+        $text = $this->debugText($text);
 
         try {
-            $response = $this->requestDetection($apiKey, $text, 30, 'detector.scan');
+            $response = $this->requestDetection($apiKey, $text, self::DETECTION_TIMEOUT_SECONDS, 'detector.scan');
+        } catch (Throwable $exception) {
+            $this->logTransportFailure('scan', $exception);
 
-            if (!$response->successful()) {
-                $error = $response->json('message') ?? $response->body();
-                return ['success' => false, 'message' => 'ZeroGPT API error (' . $response->status() . '): ' . (is_string($error) ? $error : json_encode($error))];
-            }
-
-            $data = $response->json();
-            $resultData = $data['data'] ?? $data;
-            $fakePercent = $resultData['fakePercentage'] ?? null;
-            $aiSentences = $resultData['h'] ?? [];
-
-            return [
-                'success' => (bool) ($data['success'] ?? false),
-                'message' => $data['message'] ?? 'Detection complete.',
-                'data' => [
-                    'is_human_written' => $fakePercent !== null ? round(100 - (float) $fakePercent, 1) : null,
-                    'fake_percentage' => $fakePercent,
-                    'ai_words' => $resultData['aiWords'] ?? null,
-                    'text_words' => $resultData['textWords'] ?? null,
-                    'sentences' => is_array($aiSentences) ? $aiSentences : [],
-                    'raw' => $data,
-                ],
-            ];
-        } catch (\Exception $e) {
-            return ['success' => false, 'message' => 'ZeroGPT request failed: ' . $e->getMessage()];
+            return ['success' => false, 'message' => 'ZeroGPT request failed safely.'];
         }
+
+        if (! $response->successful()) {
+            return ['success' => false, 'message' => "ZeroGPT API error ({$response->status})."];
+        }
+
+        $data = $this->jsonObject($response);
+        $resultData = is_array($data['data'] ?? null) ? $data['data'] : $data;
+        $fakePercent = $resultData['fakePercentage'] ?? null;
+        $aiSentences = $resultData['h'] ?? [];
+
+        return [
+            'success' => (bool) ($data['success'] ?? false),
+            'message' => is_string($data['message'] ?? null) ? $data['message'] : 'Detection complete.',
+            'data' => [
+                'is_human_written' => $fakePercent !== null ? round(100 - (float) $fakePercent, 1) : null,
+                'fake_percentage' => $fakePercent,
+                'ai_words' => $resultData['aiWords'] ?? null,
+                'text_words' => $resultData['textWords'] ?? null,
+                'sentences' => is_array($aiSentences) ? $aiSentences : [],
+                'raw' => $data,
+            ],
+        ];
     }
 
-    /**
-     * Test the API connection by verifying the API key is accepted.
-     *
-     * @return array{success: bool, message: string}
-     */
+    /** @return array{success: bool, message: string} */
     public function testConnection(): array
     {
-        $apiKey = $this->getApiKey();
-        if (empty($apiKey)) {
+        $apiKey = $this->validApiKey($this->getApiKey());
+        if ($apiKey === null) {
             return ['success' => false, 'message' => 'ZeroGPT API key not configured.'];
         }
 
         try {
-            // Send minimal text to verify the API key works
-            $response = $this->requestDetection($apiKey, 'Test connection.', 15, 'detector.connection_test');
+            $response = $this->requestDetection(
+                $apiKey,
+                'Test connection.',
+                self::CONNECTION_TIMEOUT_SECONDS,
+                'detector.connection_test',
+            );
+        } catch (Throwable $exception) {
+            $this->logTransportFailure('connection_test', $exception);
 
-            if ($response->successful()) {
-                return ['success' => true, 'message' => 'ZeroGPT API connected successfully.'];
-            }
-
-            $error = $response->json('message') ?? $response->body();
-            return ['success' => false, 'message' => 'ZeroGPT API error (' . $response->status() . '): ' . (is_string($error) ? $error : json_encode($error))];
-        } catch (\Exception $e) {
-            return ['success' => false, 'message' => 'ZeroGPT connection failed: ' . $e->getMessage()];
+            return ['success' => false, 'message' => 'ZeroGPT connection failed safely.'];
         }
+
+        if ($response->successful()) {
+            return ['success' => true, 'message' => 'ZeroGPT API connected successfully.'];
+        }
+
+        return ['success' => false, 'message' => "ZeroGPT API error ({$response->status})."];
     }
 
-    private function requestDetection(string $apiKey, string $text, int $timeout, string $operation): Response
+    private function requestDetection(string $apiKey, string $text, int $timeout, string $operation): OutboundHttpResponse
     {
-        $endpoint = (string) config('zerogpt.api_url', 'https://api.zerogpt.com/api/detect/detectText');
+        $endpoint = (string) config('zerogpt.api_url', self::DEFAULT_ENDPOINT);
         $units = ['characters' => mb_strlen($text), 'words' => str_word_count($text)];
         $span = app(AiTransactionRecorder::class)->start([
             'provider' => 'zerogpt',
@@ -155,39 +132,90 @@ class ZeroGptService
         ]);
 
         try {
-            $response = Http::withHeaders([
-                'ApiKey' => $apiKey,
-                'Content-Type' => 'application/json',
-            ])->timeout($timeout)->post($endpoint, ['input_text' => $text]);
-            $resultData = (array) ($response->json('data') ?? []);
+            $response = $this->http->request('POST', $endpoint, [
+                'headers' => [
+                    'Accept' => 'application/json',
+                    'ApiKey' => $apiKey,
+                    'Content-Type' => 'application/json',
+                ],
+                'body' => json_encode(['input_text' => $text], JSON_THROW_ON_ERROR),
+                'timeout' => $timeout,
+                'max_bytes' => self::MAX_RESPONSE_BYTES,
+                'max_redirects' => 0,
+            ]);
+            $payload = $this->jsonObject($response);
+            $resultData = is_array($payload['data'] ?? null) ? $payload['data'] : [];
             $usage = array_merge($units, [
                 'ai_words' => is_numeric($resultData['aiWords'] ?? null) ? (int) $resultData['aiWords'] : null,
                 'text_words' => is_numeric($resultData['textWords'] ?? null) ? (int) $resultData['textWords'] : null,
             ]);
             $attributes = [
-                'provider_request_id' => $response->header('x-request-id'),
-                'http_status' => $response->status(),
+                'provider_request_id' => $response->headerValues('x-request-id')[0] ?? null,
+                'http_status' => $response->status,
                 'usage' => $usage,
                 'response_metadata' => [
                     'fake_percentage' => $resultData['fakePercentage'] ?? null,
-                    'flagged_sentence_count' => count((array) ($resultData['h'] ?? [])),
+                    'flagged_sentence_count' => count(is_array($resultData['h'] ?? null) ? $resultData['h'] : []),
                 ],
             ];
-            $providerSucceeded = $response->successful() && (bool) ($response->json('success') ?? true);
+            $providerSucceeded = $response->successful() && (bool) ($payload['success'] ?? true);
 
             if ($providerSucceeded) {
                 $span->succeed($attributes);
             } else {
-                $span->fail((string) ($response->json('message') ?? 'ZeroGPT request failed.'), array_merge($attributes, [
+                $span->fail('ZeroGPT request failed.', array_merge($attributes, [
                     'error_type' => 'zerogpt_provider_error',
                 ]));
             }
 
             return $response;
-        } catch (\Throwable $e) {
-            $span->fail($e, ['usage' => $units]);
+        } catch (Throwable $exception) {
+            $span->fail(
+                $exception instanceof OutboundHttpException ? $exception : 'ZeroGPT request failed.',
+                ['usage' => $units],
+            );
 
-            throw $e;
+            throw $exception;
         }
+    }
+
+    private function debugText(string $text): string
+    {
+        if (! $this->isDebugMode()) {
+            return $text;
+        }
+
+        $sentences = preg_split('/(?<=[.!?])\s+/', $text, 4) ?: [];
+
+        return implode(' ', array_slice($sentences, 0, 3));
+    }
+
+    /** @return array<string, mixed> */
+    private function jsonObject(OutboundHttpResponse $response): array
+    {
+        $payload = $response->json();
+
+        return is_array($payload) ? $payload : [];
+    }
+
+    private function validApiKey(?string $apiKey): ?string
+    {
+        $apiKey = trim((string) $apiKey);
+
+        return $apiKey !== ''
+            && strlen($apiKey) <= 4096
+            && preg_match('/[\x00-\x1f\x7f]/', $apiKey) !== 1
+                ? $apiKey
+                : null;
+    }
+
+    private function logTransportFailure(string $operation, Throwable $exception): void
+    {
+        Log::warning('ZeroGPT request failed safely', [
+            'operation' => $operation,
+            'failure_code' => $exception instanceof OutboundHttpException
+                ? $exception->failureCode()
+                : 'request_failed',
+        ]);
     }
 }
